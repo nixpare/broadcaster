@@ -3,6 +3,7 @@ package broadcaster
 type Channel[T any] struct {
     bc broadcaster[*Channel[T]]
     ch chan T
+    closed bool
 }
 
 func (ch *Channel[T]) Ch() <-chan T {
@@ -19,6 +20,11 @@ func (ch *Channel[T]) unregisterNoLock() {
 }
 
 func (ch *Channel[T]) Unregister() {
+    if ch.closed {
+		return
+	}
+	ch.closed = true
+
     mutex := ch.bc.getMutex()
     mutex.Lock()
     defer mutex.Unlock()

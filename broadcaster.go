@@ -12,6 +12,7 @@ type broadcaster[T comparable] interface {
 type Broadcaster[T any] struct {
     listeners map[*Channel[T]]struct{}
     lMutex    *sync.RWMutex
+    closed    bool
 }
 
 func NewBroadcaster[T any]() *Broadcaster[T] {
@@ -30,12 +31,18 @@ func (bc *Broadcaster[T]) getMutex() *sync.RWMutex {
 }
 
 func (bc *Broadcaster[T]) Register(bufSize int) *Channel[T] {
-    ch := &Channel[T]{ bc: bc, ch: make(chan T, bufSize) }
-
     bc.lMutex.Lock()
-    bc.listeners[ch] = struct{}{}
-    bc.lMutex.Unlock()
+    defer bc.lMutex.Unlock()
+
+    ch := &Channel[T]{ bc: bc, ch: make(chan T, bufSize) }
     
+    if bc.closed {
+        ch.closed = true
+        close(ch.ch)
+    } else {
+        bc.listeners[ch] = struct{}{}
+    }
+   
     return ch
 }
 
@@ -52,6 +59,11 @@ func (bc *Broadcaster[T]) Close() {
     bc.lMutex.Lock()
     defer bc.lMutex.Unlock()
 
+    if bc.closed {
+        return
+    }
+    bc.closed = true
+
     for ch := range bc.listeners {
         ch.unregisterNoLock()
     }
@@ -60,6 +72,7 @@ func (bc *Broadcaster[T]) Close() {
 type BufBroadcaster[T any] struct {
     listeners map[*Channel[T]]struct{}
     lMutex    *sync.RWMutex
+    closed    bool
     data      []T
 }
 
@@ -80,7 +93,14 @@ func (bc *BufBroadcaster[T]) getMutex() *sync.RWMutex {
 
 func (bc *BufBroadcaster[T]) registerNoLock(bufSize int) *Channel[T] {
     ch := &Channel[T]{ bc: bc, ch: make(chan T, bufSize) }
-    bc.listeners[ch] = struct{}{}
+
+    if bc.closed {
+        ch.closed = true
+        close(ch.ch)
+    } else {
+        bc.listeners[ch] = struct{}{}
+    }
+    
     return ch
 }
 
@@ -115,6 +135,11 @@ func (bc *BufBroadcaster[T]) Connect(bufSize int) ([]T, *Channel[T]) {
 func (bc *BufBroadcaster[T]) Close() {
     bc.lMutex.Lock()
     defer bc.lMutex.Unlock()
+
+    if bc.closed {
+        return
+    }
+    bc.closed = true
 
     for ch := range bc.listeners {
         ch.unregisterNoLock()
