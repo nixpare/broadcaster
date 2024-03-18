@@ -1,55 +1,122 @@
 package broadcaster
 
-import "sync"
+import (
+	"sync"
+)
+
+type broadcaster[T comparable] interface {
+    getListeners() map[T]struct{}
+    getMutex()     *sync.RWMutex
+}
 
 type Broadcaster[T any] struct {
-    listeners map[*Listener[T]]bool
+    listeners map[*Channel[T]]struct{}
     lMutex    *sync.RWMutex
 }
 
 func NewBroadcaster[T any]() *Broadcaster[T] {
     return &Broadcaster[T]{
-        listeners: make(map[*Listener[T]]bool),
+        listeners: make(map[*Channel[T]]struct{}),
         lMutex:    new(sync.RWMutex),
     }
 }
 
-func (bc *Broadcaster[T]) Register(bufSize int) *Listener[T] {
-    l := &Listener[T]{
-        bc: bc,
-        ch: make(chan Payload[T], bufSize),
-    }
-
-    bc.lMutex.Lock()
-    bc.listeners[l] = true
-    bc.lMutex.Unlock()
-    
-    return l
+func (bc *Broadcaster[T]) getListeners() map[*Channel[T]]struct{} {
+    return bc.listeners
 }
 
-func (bc *Broadcaster[T]) Send(payload T) Waiter[T] {
+func (bc *Broadcaster[T]) getMutex() *sync.RWMutex {
+    return bc.lMutex
+}
+
+func (bc *Broadcaster[T]) Register(bufSize int) *Channel[T] {
+    ch := &Channel[T]{ bc: bc, ch: make(chan T, bufSize) }
+
+    bc.lMutex.Lock()
+    bc.listeners[ch] = struct{}{}
+    bc.lMutex.Unlock()
+    
+    return ch
+}
+
+func (bc *Broadcaster[T]) Send(payload T) {
     bc.lMutex.RLock()
     defer bc.lMutex.RUnlock()
 
-    w := &payloadWaiter[T]{
-        listeners: make([]*Listener[T], 0, len(bc.listeners)),
-        payload:   payload,
+    for ch := range bc.listeners {
+        ch.ch <- payload
     }
-    w.wg.Add(len(bc.listeners))
-
-    for l := range bc.listeners {
-        w.listeners = append(w.listeners, l)
-        l.ch <- w
-    }
-
-    return w
 }
 
 func (bc *Broadcaster[T]) Close() {
     bc.lMutex.Lock()
     defer bc.lMutex.Unlock()
 
-    for l := range bc.listeners {
-        l.unregisterNoLock()
+    for ch := range bc.listeners {
+        ch.unregisterNoLock()
+    }
+}
+
+type BufBroadcaster[T any] struct {
+    listeners map[*Channel[T]]struct{}
+    lMutex    *sync.RWMutex
+    data      []T
+}
+
+func NewBufBroadcaster[T any]() *BufBroadcaster[T] {
+    return &BufBroadcaster[T]{
+        listeners: make(map[*Channel[T]]struct{}),
+        lMutex:    new(sync.RWMutex),
+    }
+}
+
+func (bc *BufBroadcaster[T]) getListeners() map[*Channel[T]]struct{} {
+    return bc.listeners
+}
+
+func (bc *BufBroadcaster[T]) getMutex() *sync.RWMutex {
+    return bc.lMutex
+}
+
+func (bc *BufBroadcaster[T]) registerNoLock(bufSize int) *Channel[T] {
+    ch := &Channel[T]{ bc: bc, ch: make(chan T, bufSize) }
+    bc.listeners[ch] = struct{}{}
+    return ch
+}
+
+func (bc *BufBroadcaster[T]) Register(bufSize int) *Channel[T] {
+    bc.lMutex.Lock()
+    defer bc.lMutex.Unlock()
+    
+    return bc.registerNoLock(bufSize)
+}
+
+func (bc *BufBroadcaster[T]) Send(payload T) {
+    bc.lMutex.RLock()
+    defer bc.lMutex.RUnlock()
+
+    bc.data = append(bc.data, payload)
+    for ch := range bc.listeners {
+        ch.ch <- payload
+    }
+}
+
+func (bc *BufBroadcaster[T]) Data() []T {
+    return bc.data
+}
+
+func (bc *BufBroadcaster[T]) Connect(bufSize int) ([]T, *Channel[T]) {
+    bc.lMutex.Lock()
+    defer bc.lMutex.Unlock()
+
+    return bc.Data(), bc.registerNoLock(bufSize)
+}
+
+func (bc *BufBroadcaster[T]) Close() {
+    bc.lMutex.Lock()
+    defer bc.lMutex.Unlock()
+
+    for ch := range bc.listeners {
+        ch.unregisterNoLock()
     }
 }
