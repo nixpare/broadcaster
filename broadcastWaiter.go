@@ -16,11 +16,11 @@ func NewBroadcastWaiter[T any]() *BroadcastWaiter[T] {
 }
 
 func (bc *BroadcastWaiter[T]) getListeners() map[*Listener[T]]struct{} {
-    return bc.listeners
+	return bc.listeners
 }
 
 func (bc *BroadcastWaiter[T]) getMutex() *sync.RWMutex {
-    return bc.lMutex
+	return bc.lMutex
 }
 
 func (bc *BroadcastWaiter[T]) Register(bufSize int) *Listener[T] {
@@ -33,9 +33,9 @@ func (bc *BroadcastWaiter[T]) Register(bufSize int) *Listener[T] {
 	}
 
 	if bc.closed {
-        l.closed = true
-        close(l.ch)
-    } else {
+		l.closed = true
+		close(l.ch)
+	} else {
 		bc.listeners[l] = struct{}{}
 	}
 
@@ -46,7 +46,7 @@ func (bc *BroadcastWaiter[T]) Send(payload T) Waiter[T] {
 	bc.lMutex.RLock()
 	defer bc.lMutex.RUnlock()
 
-	w := &payloadWaiter[T]{
+	w := &broadcastPayloadWaiter[T]{
 		listeners: make([]*Listener[T], 0, len(bc.listeners)),
 		payload:   payload,
 	}
@@ -65,9 +65,9 @@ func (bc *BroadcastWaiter[T]) Close() {
 	defer bc.lMutex.Unlock()
 
 	if bc.closed {
-        return
-    }
-    bc.closed = true
+		return
+	}
+	bc.closed = true
 
 	for l := range bc.listeners {
 		l.unregisterNoLock()
@@ -89,11 +89,11 @@ func NewBufBroadcastWaiter[T any]() *BufBroadcastWaiter[T] {
 }
 
 func (bc *BufBroadcastWaiter[T]) getListeners() map[*Listener[T]]struct{} {
-    return bc.listeners
+	return bc.listeners
 }
 
 func (bc *BufBroadcastWaiter[T]) getMutex() *sync.RWMutex {
-    return bc.lMutex
+	return bc.lMutex
 }
 
 func (bc *BufBroadcastWaiter[T]) registerNoLock(bufSize int) *Listener[T] {
@@ -103,11 +103,11 @@ func (bc *BufBroadcastWaiter[T]) registerNoLock(bufSize int) *Listener[T] {
 	}
 
 	if bc.closed {
-        l.closed = true
-        close(l.ch)
-    } else {
-        bc.listeners[l] = struct{}{}
-    }
+		l.closed = true
+		close(l.ch)
+	} else {
+		bc.listeners[l] = struct{}{}
+	}
 
 	bc.listeners[l] = struct{}{}
 	return l
@@ -126,7 +126,7 @@ func (bc *BufBroadcastWaiter[T]) Send(payload T) Waiter[T] {
 
 	bc.data = append(bc.data, payload)
 
-	w := &payloadWaiter[T]{
+	w := &broadcastPayloadWaiter[T]{
 		listeners: make([]*Listener[T], 0, len(bc.listeners)),
 		payload:   payload,
 	}
@@ -141,14 +141,14 @@ func (bc *BufBroadcastWaiter[T]) Send(payload T) Waiter[T] {
 }
 
 func (bc *BufBroadcastWaiter[T]) Data() []T {
-    return bc.data
+	return bc.data
 }
 
 func (bc *BufBroadcastWaiter[T]) Connect(bufSize int) ([]T, *Listener[T]) {
-    bc.lMutex.Lock()
-    defer bc.lMutex.Unlock()
+	bc.lMutex.Lock()
+	defer bc.lMutex.Unlock()
 
-    return bc.Data(), bc.registerNoLock(bufSize)
+	return bc.Data(), bc.registerNoLock(bufSize)
 }
 
 func (bc *BufBroadcastWaiter[T]) Close() {
@@ -156,9 +156,9 @@ func (bc *BufBroadcastWaiter[T]) Close() {
 	defer bc.lMutex.Unlock()
 
 	if bc.closed {
-        return
-    }
-    bc.closed = true
+		return
+	}
+	bc.closed = true
 
 	for l := range bc.listeners {
 		l.unregisterNoLock()
