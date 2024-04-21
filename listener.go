@@ -16,6 +16,11 @@ func (l *Listener[T]) Get() T {
 }
 
 func (l *Listener[T]) unregisterNoLock() {
+	if l.closed {
+		return
+	}
+	l.closed = true
+
 	delete(l.bc.getListeners(), l)
 	close(l.ch)
 }
@@ -24,7 +29,6 @@ func (l *Listener[T]) Unregister() {
 	if l.closed {
 		return
 	}
-	l.closed = true
 
 	mutex := l.bc.getMutex()
     mutex.Lock()
